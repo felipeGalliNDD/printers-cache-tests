@@ -1,0 +1,9 @@
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.log
+.vs/
+*.DS_Store
+printers.db
