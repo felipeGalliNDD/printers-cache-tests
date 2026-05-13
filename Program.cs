@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Net.Sockets;
+using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using NDDTech.Devices.PrintControl.PrintersCache.Extensions;
@@ -11,7 +12,6 @@ var arguments = ParseArguments(args);
 var redisConnection = arguments.GetValueOrDefault("redis") ?? "localhost:6379";
 var sqlitePath = arguments.GetValueOrDefault("sqlite") ?? "printers.db";
 var garnetAutoStart = ParseBoolean(arguments.GetValueOrDefault("garnet-autostart"), defaultValue: true);
-var garnetExe = ResolvePath(arguments.GetValueOrDefault("garnet-exe") ?? Path.Combine("tools", "garnet", "win-x64", "garnet-server.exe"));
 var garnetWorkDir = ResolvePath(arguments.GetValueOrDefault("garnet-workdir") ?? AppContext.BaseDirectory);
 var redisPassword = arguments.GetValueOrDefault("redis-password");
 
@@ -20,13 +20,18 @@ Process? garnetProcess = null;
 
 if (garnetAutoStart && redisEndpoint.IsLocal && !IsPortOpen(redisEndpoint.Host, redisEndpoint.Port))
 {
-    if (!File.Exists(garnetExe))
+    if (!await GarnetHealthCheck.IsGarnetRunningAsync(redisConnection, CancellationToken.None))
     {
-        throw new FileNotFoundException($"Bundled Garnet executable not found: {garnetExe}");
-    }
+        var garnetExe = await EnsureGarnetToolInstalledAsync(CancellationToken.None);
 
-    garnetProcess = StartGarnet(garnetExe, garnetWorkDir, redisEndpoint.Port);
-    await WaitForPortAsync(redisEndpoint.Host, redisEndpoint.Port, TimeSpan.FromSeconds(30), CancellationToken.None);
+        if (!File.Exists(garnetExe))
+        {
+            throw new FileNotFoundException($"Garnet tool executable not found after install: {garnetExe}");
+        }
+
+        garnetProcess = StartGarnet(garnetExe, garnetWorkDir, redisEndpoint.Port);
+        await WaitForGarnetAsync(garnetProcess, redisConnection, TimeSpan.FromSeconds(30), CancellationToken.None);
+    }
 }
 
 var garnetConnection = string.IsNullOrWhiteSpace(redisPassword)
@@ -177,6 +182,71 @@ static string ResolvePath(string path)
         : Path.GetFullPath(path, AppContext.BaseDirectory);
 }
 
+static async Task<string> EnsureGarnetToolInstalledAsync(CancellationToken cancellationToken)
+{
+    if (await IsGarnetToolInstalledAsync(cancellationToken))
+    {
+        var existingExe = ResolveGarnetToolExe();
+        if (File.Exists(existingExe))
+        {
+            return existingExe;
+        }
+    }
+
+    var install = new ProcessStartInfo
+    {
+        FileName = "dotnet",
+        UseShellExecute = false,
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+        CreateNoWindow = true
+    };
+
+    install.ArgumentList.Add("tool");
+    install.ArgumentList.Add("install");
+    install.ArgumentList.Add("-g");
+    install.ArgumentList.Add("garnet-server");
+
+    var output = await RunProcessAsync(install, cancellationToken);
+    var toolExe = ResolveGarnetToolExe();
+
+    if (!File.Exists(toolExe))
+    {
+        throw new InvalidOperationException($"Garnet install finished but executable not found: {toolExe}{Environment.NewLine}{output}");
+    }
+
+    return toolExe;
+}
+
+static async Task<bool> IsGarnetToolInstalledAsync(CancellationToken cancellationToken)
+{
+    var list = new ProcessStartInfo
+    {
+        FileName = "dotnet",
+        UseShellExecute = false,
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+        CreateNoWindow = true
+    };
+
+    list.ArgumentList.Add("tool");
+    list.ArgumentList.Add("list");
+    list.ArgumentList.Add("-g");
+
+    var output = await RunProcessAsync(list, cancellationToken);
+    return output.Contains("garnet-server", StringComparison.OrdinalIgnoreCase);
+}
+
+static string ResolveGarnetToolExe()
+{
+    if (OperatingSystem.IsWindows())
+    {
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dotnet", "tools", "garnet-server.exe");
+    }
+
+    return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dotnet", "tools", "garnet-server");
+}
+
 static (string Host, int Port, bool IsLocal) ParseRedisEndpoint(string connection)
 {
     var parts = connection.Split(':', 2, StringSplitOptions.TrimEntries);
@@ -211,7 +281,9 @@ static Process StartGarnet(string garnetExe, string garnetWorkDir, int port)
         FileName = garnetExe,
         WorkingDirectory = garnetWorkDir,
         UseShellExecute = false,
-        CreateNoWindow = true
+        CreateNoWindow = true,
+        RedirectStandardOutput = true,
+        RedirectStandardError = true
     };
 
     startInfo.ArgumentList.Add("--port");
@@ -220,15 +292,80 @@ static Process StartGarnet(string garnetExe, string garnetWorkDir, int port)
     return Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start Garnet process.");
 }
 
-static async Task WaitForPortAsync(string host, int port, TimeSpan timeout, CancellationToken cancellationToken)
+static async Task<string> RunProcessAsync(ProcessStartInfo startInfo, CancellationToken cancellationToken)
+{
+    using var process = new Process { StartInfo = startInfo };
+    var output = new StringBuilder();
+
+    process.OutputDataReceived += (_, e) =>
+    {
+        if (!string.IsNullOrWhiteSpace(e.Data))
+        {
+            output.AppendLine(e.Data);
+        }
+    };
+
+    process.ErrorDataReceived += (_, e) =>
+    {
+        if (!string.IsNullOrWhiteSpace(e.Data))
+        {
+            output.AppendLine(e.Data);
+        }
+    };
+
+    if (!process.Start())
+    {
+        throw new InvalidOperationException($"Failed to start process: {startInfo.FileName}");
+    }
+
+    process.BeginOutputReadLine();
+    process.BeginErrorReadLine();
+
+    await process.WaitForExitAsync(cancellationToken);
+
+    if (process.ExitCode != 0)
+    {
+        throw new InvalidOperationException($"Process failed: {startInfo.FileName}{Environment.NewLine}{output}");
+    }
+
+    return output.ToString();
+}
+
+static async Task WaitForGarnetAsync(Process process, string connectionString, TimeSpan timeout, CancellationToken cancellationToken)
 {
     var deadline = DateTimeOffset.UtcNow + timeout;
+    var output = new StringBuilder();
+
+    process.OutputDataReceived += (_, e) =>
+    {
+        if (!string.IsNullOrWhiteSpace(e.Data))
+        {
+            output.AppendLine(e.Data);
+        }
+    };
+
+    process.ErrorDataReceived += (_, e) =>
+    {
+        if (!string.IsNullOrWhiteSpace(e.Data))
+        {
+            output.AppendLine(e.Data);
+        }
+    };
+
+    process.BeginOutputReadLine();
+    process.BeginErrorReadLine();
 
     while (DateTimeOffset.UtcNow < deadline)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (IsPortOpen(host, port))
+        if (process.HasExited)
+        {
+            var logs = output.Length == 0 ? "<no output>" : output.ToString();
+            throw new InvalidOperationException($"Garnet exited early with code {process.ExitCode}. Logs:{Environment.NewLine}{logs}");
+        }
+
+        if (await GarnetHealthCheck.IsGarnetRunningAsync(connectionString, cancellationToken))
         {
             return;
         }
@@ -236,7 +373,7 @@ static async Task WaitForPortAsync(string host, int port, TimeSpan timeout, Canc
         await Task.Delay(250, cancellationToken);
     }
 
-    throw new TimeoutException($"Garnet did not start on {host}:{port} within {timeout.TotalSeconds} seconds.");
+    throw new TimeoutException($"Garnet did not start within {timeout.TotalSeconds} seconds.");
 }
 
 static IDisposable RegisterShutdown(Process? process)

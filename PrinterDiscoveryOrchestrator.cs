@@ -12,7 +12,7 @@ public class PrinterDiscoveryOrchestrator : IPrinterDiscoveryOrchestrator
     private readonly ISqlitePrinterStore _sqliteStore;
     private readonly IPrinterDistributedCache _cache;
     private const string Community = "public";
-    private const int TimeoutMs = 2000;
+    private const int TimeoutMs = 5000;
 
     private static readonly string[] OidName = { "1.3.6.1.2.1.1.5.0" };
     private static readonly string[] OidSerial = { "1.3.6.1.2.1.43.5.1.1.17.1" };

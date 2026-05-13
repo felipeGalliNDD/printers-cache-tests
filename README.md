@@ -31,7 +31,6 @@ For each IP address:
 | `--redis-password` | Redis password (optional) | - |
 | `--sqlite` | SQLite database file path | `printers.db` |
 | `--garnet-autostart` | Start bundled Garnet if needed | `true` |
-| `--garnet-exe` | Garnet executable path | `tools/garnet/win-x64/garnet-server.exe` |
 | `--garnet-workdir` | Garnet working directory | app folder |
 
 ## Usage
@@ -51,9 +50,9 @@ dotnet run -- --redis localhost:6379 --garnet-autostart true
 dotnet run -- --garnet-autostart false
 ```
 
-### Bundled Garnet
+### Garnet Tool
 
-Place `garnet-server.exe` under `tools/garnet/win-x64/` before publish. The app will copy it to output and start it automatically when `--garnet-autostart true` and local Redis port is closed.
+When `--garnet-autostart true` and local Redis port is closed, the app first checks Redis `PING`. If Garnet is not already running, it checks for global `garnet-server`. If missing, it runs `dotnet tool install -g garnet-server`, then starts `garnet-server` in background.
 
 ## Building
 

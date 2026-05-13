@@ -17,8 +17,8 @@ public static class NetworkPrinterScanner
     {
         const string subnet = "172.25.16";
         const int start = 1;
-        const int end = 100;
-        const int timeout = 2000;
+        const int end = 255;
+        const int timeout = 5000;
         const string community = "public";
         const int maxParallel = 20;
 
@@ -83,8 +83,8 @@ public static class NetworkPrinterScanner
     {
         const string subnet = "172.25.16";
         const int start = 1;
-        const int end = 100;
-        const int maxParallel = 20;
+        const int end = 255;
+        const int maxParallel = 5;
 
         Console.WriteLine($"Scanning {subnet}.{start}-{end} with orchestrator...");
 

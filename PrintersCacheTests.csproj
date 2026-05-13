@@ -13,13 +13,6 @@
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.8" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Content Include="tools\garnet\win-x64\**\*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
-  </ItemGroup>
-
 <ItemGroup>
   <ProjectReference Include="..\..\NDDTech.Devices.PrintControl.PrintersCache\NDDTech.Devices.PrintControl.PrintersCache\NDDTech.Devices.PrintControl.PrintersCache.csproj" />
 </ItemGroup>
