@@ -53,7 +53,6 @@ services.AddSingleton<ISqlitePrinterStore>(_ => new SqlitePrinterStore(sqlitePat
 services.AddSingleton<IPrinterDiscoveryOrchestrator, PrinterDiscoveryOrchestrator>();
 
 using var sp = services.BuildServiceProvider();
-using var shutdown = RegisterShutdown(garnetProcess);
 
 var cache = sp.GetRequiredService<IPrinterDistributedCache>();
 var orchestrator = sp.GetRequiredService<IPrinterDiscoveryOrchestrator>();
@@ -280,10 +279,8 @@ static Process StartGarnet(string garnetExe, string garnetWorkDir, int port)
     {
         FileName = garnetExe,
         WorkingDirectory = garnetWorkDir,
-        UseShellExecute = false,
-        CreateNoWindow = true,
-        RedirectStandardOutput = true,
-        RedirectStandardError = true
+        UseShellExecute = true,
+        CreateNoWindow = true
     };
 
     startInfo.ArgumentList.Add("--port");
@@ -334,36 +331,10 @@ static async Task<string> RunProcessAsync(ProcessStartInfo startInfo, Cancellati
 static async Task WaitForGarnetAsync(Process process, string connectionString, TimeSpan timeout, CancellationToken cancellationToken)
 {
     var deadline = DateTimeOffset.UtcNow + timeout;
-    var output = new StringBuilder();
-
-    process.OutputDataReceived += (_, e) =>
-    {
-        if (!string.IsNullOrWhiteSpace(e.Data))
-        {
-            output.AppendLine(e.Data);
-        }
-    };
-
-    process.ErrorDataReceived += (_, e) =>
-    {
-        if (!string.IsNullOrWhiteSpace(e.Data))
-        {
-            output.AppendLine(e.Data);
-        }
-    };
-
-    process.BeginOutputReadLine();
-    process.BeginErrorReadLine();
 
     while (DateTimeOffset.UtcNow < deadline)
     {
         cancellationToken.ThrowIfCancellationRequested();
-
-        if (process.HasExited)
-        {
-            var logs = output.Length == 0 ? "<no output>" : output.ToString();
-            throw new InvalidOperationException($"Garnet exited early with code {process.ExitCode}. Logs:{Environment.NewLine}{logs}");
-        }
 
         if (await GarnetHealthCheck.IsGarnetRunningAsync(connectionString, cancellationToken))
         {
@@ -374,51 +345,4 @@ static async Task WaitForGarnetAsync(Process process, string connectionString, T
     }
 
     throw new TimeoutException($"Garnet did not start within {timeout.TotalSeconds} seconds.");
-}
-
-static IDisposable RegisterShutdown(Process? process)
-{
-    if (process is null)
-    {
-        return new NullDisposable();
-    }
-
-    ConsoleCancelEventHandler? cancelHandler = null;
-    cancelHandler = (_, e) =>
-    {
-        e.Cancel = true;
-        TryStop(process);
-    };
-
-    Console.CancelKeyPress += cancelHandler;
-    AppDomain.CurrentDomain.ProcessExit += (_, __) => TryStop(process);
-
-    return new DelegateDisposable(() => Console.CancelKeyPress -= cancelHandler);
-}
-
-static void TryStop(Process process)
-{
-    try
-    {
-        if (!process.HasExited)
-        {
-            process.Kill(entireProcessTree: true);
-            process.WaitForExit(5000);
-        }
-    }
-    catch
-    {
-    }
-}
-
-sealed class DelegateDisposable(Action dispose) : IDisposable
-{
-    public void Dispose() => dispose();
-}
-
-sealed class NullDisposable : IDisposable
-{
-    public void Dispose()
-    {
-    }
 }

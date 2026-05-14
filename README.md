@@ -52,7 +52,7 @@ dotnet run -- --garnet-autostart false
 
 ### Garnet Tool
 
-When `--garnet-autostart true` and local Redis port is closed, the app first checks Redis `PING`. If Garnet is not already running, it checks for global `garnet-server`. If missing, it runs `dotnet tool install -g garnet-server`, then starts `garnet-server` in background.
+When `--garnet-autostart true` and local Redis port is closed, the app first checks Redis `PING`. If Garnet is not already running, it checks for global `garnet-server`. If missing, it runs `dotnet tool install -g garnet-server`, then starts `garnet-server` detached. It keeps running after app exits.
 
 ## Building
 
