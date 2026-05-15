@@ -81,11 +81,19 @@ try
         Console.Write("IpAddress: ");
         var ipAddress = Console.ReadLine();
 
+        Console.Write("Manufacturer: ");
+        var manufacturer = Console.ReadLine();
+
+        Console.Write("Model: ");
+        var model = Console.ReadLine();
+
         var printerData = new PrinterData
         {
             Name = name ?? string.Empty,
             Serial = serial ?? string.Empty,
-            IpAddress = ipAddress ?? string.Empty
+            IpAddress = ipAddress ?? string.Empty,
+            Manufacturer = manufacturer ?? string.Empty,
+            Model = model ?? string.Empty
         };
 
         await cache.WritePrinterData(printerData, CancellationToken.None);
