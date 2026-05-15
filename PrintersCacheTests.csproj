@@ -11,10 +11,8 @@
     <PackageReference Include="Lextm.SharpSnmpLib" Version="12.5.7" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.8" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.8" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.8" />
+    <PackageReference Include="NDDTech.Devices.PrintControl.PrintersCache" Version="1.0.9" />
   </ItemGroup>
-
-<ItemGroup>
-  <ProjectReference Include="..\..\NDDTech.Devices.PrintControl.PrintersCache\NDDTech.Devices.PrintControl.PrintersCache\NDDTech.Devices.PrintControl.PrintersCache.csproj" />
-</ItemGroup>
 
 </Project>

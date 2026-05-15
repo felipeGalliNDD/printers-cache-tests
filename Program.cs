@@ -60,90 +60,98 @@ var sqliteStore = sp.GetRequiredService<ISqlitePrinterStore>();
 
 await sqliteStore.InitializeAsync(CancellationToken.None);
 
-Console.WriteLine("Choose option:");
-Console.WriteLine("1 - Create printer");
-Console.WriteLine("2 - Read printer");
-Console.WriteLine("3 - Scan and save network printers");
-Console.Write("Option: ");
-
-var option = Console.ReadLine();
-
-try
+while (true)
 {
-    if (option == "1")
+    Console.WriteLine();
+    Console.WriteLine("Choose option:");
+    Console.WriteLine("1 - Create printer");
+    Console.WriteLine("2 - Read printer");
+    Console.WriteLine("3 - Scan and save network printers");
+    Console.WriteLine("4 - Exit");
+    Console.Write("Option: ");
+
+    var option = Console.ReadLine()?.Trim();
+
+    if (option == "4")
+        break;
+
+    try
     {
-        Console.Write("Printer name: ");
-        var name = Console.ReadLine();
-
-        Console.Write("Serial number: ");
-        var serial = Console.ReadLine();
-
-        Console.Write("IpAddress: ");
-        var ipAddress = Console.ReadLine();
-
-        Console.Write("Manufacturer: ");
-        var manufacturer = Console.ReadLine();
-
-        Console.Write("Model: ");
-        var model = Console.ReadLine();
-
-        var printerData = new PrinterData
+        if (option == "1")
         {
-            Name = name ?? string.Empty,
-            Serial = serial ?? string.Empty,
-            IpAddress = ipAddress ?? string.Empty,
-            Manufacturer = manufacturer ?? string.Empty,
-            Model = model ?? string.Empty
-        };
+            Console.Write("Printer name: ");
+            var name = Console.ReadLine();
 
-        await cache.WritePrinterData(printerData, CancellationToken.None);
-        await sqliteStore.UpsertByIpAddressAsync(printerData, CancellationToken.None);
+            Console.Write("Serial number: ");
+            var serial = Console.ReadLine();
 
-        Console.WriteLine("Printer data written successfully.");
-    }
-    else if (option == "2")
-    {
-        Console.Write("IpAddress: ");
-        var ipAddress = Console.ReadLine();
+            Console.Write("IpAddress: ");
+            var ipAddress = Console.ReadLine();
 
-        if (string.IsNullOrWhiteSpace(ipAddress))
-        {
-            Console.WriteLine("IpAddress is required.");
-            return;
+            Console.Write("Manufacturer: ");
+            var manufacturer = Console.ReadLine();
+
+            Console.Write("Model: ");
+            var model = Console.ReadLine();
+
+            var printerData = new PrinterData
+            {
+                Name = name ?? string.Empty,
+                Serial = serial ?? string.Empty,
+                IpAddress = ipAddress ?? string.Empty,
+                Manufacturer = manufacturer ?? string.Empty,
+                Model = model ?? string.Empty
+            };
+
+            await cache.WritePrinterData(printerData, CancellationToken.None);
+            await sqliteStore.UpsertByIpAddressAsync(printerData, CancellationToken.None);
+
+            Console.WriteLine("Printer data written successfully.");
         }
-
-        var printerData = await orchestrator.GetByIpAddressAsync(ipAddress, CancellationToken.None);
-
-        if (printerData is null)
+        else if (option == "2")
         {
-            Console.WriteLine("Printer not found.");
-            return;
-        }
+            Console.Write("IpAddress: ");
+            var ipAddress = Console.ReadLine();
 
-        Console.WriteLine("Printer found:");
-        Console.WriteLine($"Name: {printerData.Name}");
-        Console.WriteLine($"Serial: {printerData.Serial}");
-        Console.WriteLine($"IpAddress: {printerData.IpAddress}");
-        Console.WriteLine($"Manufacturer: {printerData.Manufacturer}");
-        Console.WriteLine($"Model: {printerData.Model}");
+            if (string.IsNullOrWhiteSpace(ipAddress))
+            {
+                Console.WriteLine("IpAddress is required.");
+                continue;
+            }
+
+            var printerData = await orchestrator.GetByIpAddressAsync(ipAddress, CancellationToken.None);
+
+            if (printerData is null)
+            {
+                Console.WriteLine("Printer not found.");
+                continue;
+            }
+
+            Console.WriteLine("Printer found:");
+            Console.WriteLine($"Name: {printerData.Name}");
+            Console.WriteLine($"Serial: {printerData.Serial}");
+            Console.WriteLine($"IpAddress: {printerData.IpAddress}");
+            Console.WriteLine($"Manufacturer: {printerData.Manufacturer}");
+            Console.WriteLine($"Model: {printerData.Model}");
+        }
+        else if (option == "3")
+        {
+            Console.WriteLine("Scanning network printers...");
+            await NetworkPrinterScanner.ScanAndSaveWithOrchestratorAsync(orchestrator, CancellationToken.None);
+        }
+        else
+        {
+            Console.WriteLine("Invalid option.");
+        }
     }
-    else if (option == "3")
+    catch (Exception ex)
     {
-        Console.WriteLine("Scanning network printers...");
-        await NetworkPrinterScanner.ScanAndSaveWithOrchestratorAsync(orchestrator, CancellationToken.None);
+        Console.WriteLine("Printer cache operation failed.");
+        Console.WriteLine($"Connection: {redisConnection}");
+        Console.WriteLine($"SQLite: {sqlitePath}");
+        Console.WriteLine($"Garnet auto-start: {garnetAutoStart}");
+        Console.WriteLine($"Error: {ex.Message}");
     }
-    else
-    {
-        Console.WriteLine("Invalid option.");
-    }
-}
-catch (Exception ex)
-{
-    Console.WriteLine("Printer cache operation failed.");
-    Console.WriteLine($"Connection: {redisConnection}");
-    Console.WriteLine($"SQLite: {sqlitePath}");
-    Console.WriteLine($"Garnet auto-start: {garnetAutoStart}");
-    Console.WriteLine($"Error: {ex.Message}");
 }
 
 static Dictionary<string, string?> ParseArguments(string[] args)
